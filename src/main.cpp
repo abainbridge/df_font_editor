@@ -159,9 +159,16 @@ static void draw_frame() {
     int columnWidth = 48;
     int x = 10;
     int y = 10;
-    for (int i = 0; i < sizeof(g_proofText); i += columnWidth) {
-        DrawTextSimpleLen(g_font, g_textColour, g_window->bmp, x, y, g_proofText + i, columnWidth);
+    for (int i = 0; i < sizeof(g_proofText);) {
+        int lineLen = columnWidth;
+        while (lineLen > 0 && g_proofText[i + lineLen - 1] != ' ')
+            lineLen--;
+        if (lineLen == 0)
+            lineLen = columnWidth;
+
+        DrawTextSimpleLen(g_font, g_textColour, g_window->bmp, x, y, g_proofText + i, lineLen);
         y += g_font->charHeight;
+        i += lineLen;
     }
 
     g_editWidget.Render();
