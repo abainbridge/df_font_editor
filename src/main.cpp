@@ -9,14 +9,29 @@
 
 // Standard headers
 
+struct EditWidget {
+    int zoomFactor, top, left, width, height;
+
+    // The sequence of glyphs is ASCII 32 to 127 - ie space to tilde.
+    //   !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+    // Then ASCII 161 to 191:
+    //  ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿
+    // Then it is half-height hex digits 0 to f.
+    DfBitmap *glyphs[96];
+
+    void Init(DfFont *font);
+    void Advance();
+    void Render();
+};
+
+
 static const char APPLICATION_NAME[] = "Deadfrog Font Editor";
 DfColour g_backgroundColour = { 0xff303030 };
 DfColour g_gridColour = { 0xff484848 };
 DfColour g_gridBoldColour = { 0xff707070 };
 DfColour g_textColour = { 0xffb8b8b8 };
-double g_drawScale = 1.0;
+EditWidget g_editWidget;
 DfFont *g_font;
-DfBitmap *g_fontBitmap;
 char g_proofText[] =
     "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ "
     "Angel Adept Blind Bodice Clique Coast Dunce Docile Enact Eosin Furlong Focal "
@@ -51,12 +66,76 @@ char g_proofText[] =
     "the gizmo ozone of the franz laissez and buzzing.";
 
 
+// ****************************************************************************
+// EditWidget
+// ****************************************************************************
+
+void EditWidget::Init(DfFont *font) {
+    zoomFactor = 7;
+    top = 10;
+    left = 548;
+    width = 16 * zoomFactor * font->maxCharWidth + 1;
+    height = 6 * zoomFactor * font->charHeight;
+
+    for (int i = 32; i < 128; i++) {
+        DfBitmap **g = &glyphs[i - 32];
+        *g = BitmapCreate(font->maxCharWidth, font->charHeight);
+        BitmapClear(*g, g_backgroundColour);
+        char s[2] = { i };
+        DrawTextSimple(font, g_textColour, *g, 0, 0, s);
+    }
+}
+
+void EditWidget::Advance() {
+    if (g_window->input.lmb) {
+        int x = g_window->input.mouseX - left;
+        x /= zoomFactor;
+        int y = g_window->input.mouseY - top;
+        y /= zoomFactor;
+        PutPix(glyphs[0], x, y, g_colourWhite);
+    }
+}
+
+void EditWidget::Render() {
+    int fontWidth = glyphs[0]->width;
+    int fontHeight = glyphs[0]->height;
+
+    // Draw glyph set onto font bitmap.
+    for (int y = 0; y < 6; y++) {
+        int tmpY = top + y * fontHeight * zoomFactor;
+        for (int x = 0; x < 16; x++) {
+            int glyphIdx = y * 16 + x;
+            int tmpX = left + x * fontWidth * zoomFactor;
+            ScaleUpBlit(g_window->bmp, tmpX, tmpY, zoomFactor, glyphs[glyphIdx]);
+        }
+    }
+
+    // Draw pixel grid over zoomed glyph set.
+    for (int i = 0; i <= 6 * fontHeight; i++) {
+        int tmpY = top + i * zoomFactor;
+        DfColour col = g_gridColour;
+        if ((i % g_font->charHeight) == 0)
+            col = g_gridBoldColour;
+        HLine(g_window->bmp, left, tmpY, width, col);
+    }
+    for (int i = 0; i <= 16 * fontWidth; i++) {
+        int tmpX = left + i * zoomFactor;
+        DfColour col = g_gridColour;
+        if ((i % g_font->maxCharWidth) == 0)
+            col = g_gridBoldColour;
+        VLine(g_window->bmp, tmpX, top + 1, height - 1, col);
+    }
+}
+
+// ****************************************************************************
+// ****************************************************************************
+
+
 static void draw_frame() {
     BitmapClear(g_window->bmp, g_backgroundColour);
 
     // Draw proof text
     int columnWidth = 48;
-    int zoomFactor = 7;
     int x = 10;
     int y = 10;
     for (int i = 0; i < sizeof(g_proofText); i += columnWidth) {
@@ -64,37 +143,7 @@ static void draw_frame() {
         y += g_font->charHeight;
     }
 
-    // Draw glyph set onto font bitmap.
-    BitmapClear(g_fontBitmap, g_backgroundColour);
-    for (y = 0; y < 6; y++) {
-        int tmpY = y * g_font->charHeight;
-        for (x = 0; x < 16; x++) {
-            int tmpX = x * g_font->maxCharWidth;
-            char s[2] = { x + y * 16 + 32 };
-            DrawTextSimple(g_font, g_textColour, g_fontBitmap, tmpX, tmpY, s);
-        }
-    }
-
-    // Draw zoomed view of font bitmap on main window bitmap.
-    x += columnWidth * g_font->maxCharWidth + 10;
-    y = 10;
-    ScaleUpBlit(g_window->bmp, x, y, zoomFactor, g_fontBitmap);
-
-    // Draw pixel grid over zoomed glyph set.
-    for (int i = 0; i <= g_fontBitmap->height; i++) {
-        int tmpY = y + i * zoomFactor;
-        DfColour col = g_gridColour;
-        if ((i % g_font->charHeight) == 0)
-            col = g_gridBoldColour;
-        HLine(g_window->bmp, x, tmpY, g_fontBitmap->width * zoomFactor + 1, col);
-    }
-    for (int i = 0; i <= g_fontBitmap->width; i++) {
-        int tmpX = x + i * zoomFactor;
-        DfColour col = g_gridColour;
-        if ((i % g_font->maxCharWidth) == 0)
-            col = g_gridBoldColour;
-        VLine(g_window->bmp, tmpX, y+1, g_fontBitmap->height * zoomFactor-1, col);
-    }
+    g_editWidget.Render();
 
     UpdateWin(g_window);
 }
@@ -108,7 +157,7 @@ void main() {
     UpdateWin(g_window);
 
     g_font = LoadFontFromMemory(df_mono_11x20, sizeof(df_mono_11x20));
-    g_fontBitmap = BitmapCreate(g_font->maxCharWidth * 16, g_font->charHeight * 6);
+    g_editWidget.Init(g_font);
 
 
     //
@@ -122,6 +171,7 @@ void main() {
         }
 
         if (InputPoll(g_window) || force_frame) {
+            g_editWidget.Advance();
             draw_frame();
         }
          
