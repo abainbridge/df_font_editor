@@ -66,6 +66,16 @@ char g_proofText[] =
     "the gizmo ozone of the franz laissez and buzzing.";
 
 
+bool MouseInRect(int left, int top, int width, int height) {
+    if (g_window->input.mouseX >= left &&
+            g_window->input.mouseX < (left + width) &&
+            g_window->input.mouseY > top &&
+            g_window->input.mouseY < (top + height))
+        return true;
+    return false;
+}
+
+
 // ****************************************************************************
 // EditWidget
 // ****************************************************************************
@@ -87,12 +97,23 @@ void EditWidget::Init(DfFont *font) {
 }
 
 void EditWidget::Advance() {
-    if (g_window->input.lmb) {
+    int fontWidth = glyphs[0]->width;
+    int fontHeight = glyphs[0]->height;
+
+    if (g_window->input.lmb && 
+            MouseInRect(left, top, width - 1, height)) {
         int x = g_window->input.mouseX - left;
         x /= zoomFactor;
         int y = g_window->input.mouseY - top;
         y /= zoomFactor;
-        PutPix(glyphs[0], x, y, g_colourWhite);
+
+        int glyphIdx = (y / fontHeight) * 16;
+        glyphIdx += x / fontWidth;
+
+        x %= fontWidth;
+        y %= fontHeight;
+
+        PutPix(glyphs[glyphIdx], x, y, g_colourWhite);
     }
 }
 
