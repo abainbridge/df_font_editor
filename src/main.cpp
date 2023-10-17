@@ -1,22 +1,17 @@
 // Deadfrog lib headers
 #include "df_clipboard.h"
 #include "df_font.h"
+#include "df_gui.h"
 #include "df_time.h"
 #include "df_window.h"
 #include "fonts/df_mono.h"
 
-// Project headers
-
-// Standard headers
 
 struct EditWidget {
-    int zoomFactor, top, left, width, height;
+    int zoomFactor;
+    int top, left, width, height;
+    int selectedColourIdx;
 
-    // The sequence of glyphs is ASCII 32 to 127 - ie space to tilde.
-    //   !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
-    // Then ASCII 161 to 191:
-    //  ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿
-    // Then it is half-height hex digits 0 to f.
     DfBitmap *glyphs[96];
 
     void Init(DfFont *font);
@@ -26,10 +21,9 @@ struct EditWidget {
 
 
 static const char APPLICATION_NAME[] = "Deadfrog Font Editor";
-DfColour g_backgroundColour = { 0xff303030 };
 DfColour g_gridColour = { 0xff484848 };
 DfColour g_gridBoldColour = { 0xff707070 };
-DfColour g_textColour = { 0xffb8b8b8 };
+DfColour g_textColours[4] = { 0xff303030, 0xff6e6e6e, 0xff8f8f8f, 0xffb8b8b8 };
 EditWidget g_editWidget;
 DfFont *g_font;
 char g_proofText[] =
@@ -66,13 +60,23 @@ char g_proofText[] =
     "the gizmo ozone of the franz laissez and buzzing.";
 
 
-bool MouseInRect(int left, int top, int width, int height) {
-    if (g_window->input.mouseX >= left &&
-            g_window->input.mouseX < (left + width) &&
-            g_window->input.mouseY > top &&
-            g_window->input.mouseY < (top + height))
-        return true;
-    return false;
+// ****************************************************************************
+// ColourButton
+// ****************************************************************************
+
+int ColourButtonDo(DfWindow *win, DfColour colour, int selected, int x, int y, int w, int h) {
+    int mouseInRect = DfMouseInRect(win, x, y, w, h);
+    if (mouseInRect || selected) {
+        RectOutline(win->bmp, x, y, w, h, g_buttonHighlightColour);
+    }
+
+    x += 2; y += 2; w -= 4; h -= 4;
+    RectOutline(win->bmp, x, y, w, h, g_frameColour);
+
+    x++; y++; w -= 2; h -= 2;
+    RectFill(win->bmp, x, y, w, h, colour);
+
+    return mouseInRect && win->input.lmbClicked;
 }
 
 
@@ -86,13 +90,14 @@ void EditWidget::Init(DfFont *font) {
     left = 548;
     width = 16 * zoomFactor * font->maxCharWidth + 1;
     height = 6 * zoomFactor * font->charHeight;
+    selectedColourIdx = 3;
 
     for (int i = 32; i < 128; i++) {
         DfBitmap **g = &glyphs[i - 32];
         *g = BitmapCreate(font->maxCharWidth, font->charHeight);
         BitmapClear(*g, g_backgroundColour);
         char s[2] = { i };
-        DrawTextSimple(font, g_textColour, *g, 0, 0, s);
+        DrawTextSimple(font, g_textColours[3], *g, 0, 0, s);
     }
 }
 
@@ -101,7 +106,7 @@ void EditWidget::Advance() {
     int fontHeight = glyphs[0]->height;
 
     if (g_window->input.lmb && 
-            MouseInRect(left, top, width - 1, height)) {
+            DfMouseInRect(g_window, left, top, width - 1, height)) {
         int x = g_window->input.mouseX - left;
         x /= zoomFactor;
         int y = g_window->input.mouseY - top;
@@ -113,8 +118,13 @@ void EditWidget::Advance() {
         x %= fontWidth;
         y %= fontHeight;
 
-        PutPix(glyphs[glyphIdx], x, y, g_colourWhite);
+        PutPix(glyphs[glyphIdx], x, y, g_textColours[selectedColourIdx]);
     }
+
+    if (g_window->input.keyDowns[KEY_1]) selectedColourIdx = 0;
+    if (g_window->input.keyDowns[KEY_2]) selectedColourIdx = 1;
+    if (g_window->input.keyDowns[KEY_3]) selectedColourIdx = 2;
+    if (g_window->input.keyDowns[KEY_4]) selectedColourIdx = 3;
 }
 
 void EditWidget::Render() {
@@ -146,10 +156,69 @@ void EditWidget::Render() {
             col = g_gridBoldColour;
         VLine(g_window->bmp, tmpX, top + 1, height - 1, col);
     }
+
+    for (int i = 0; i < 4; i++) {
+        int buttonWidth = 80;
+        int buttonPitch = buttonWidth + 10;
+        int x = left + buttonPitch * i;
+        int y = top + height + 10;
+        int selected = i == selectedColourIdx;
+        int clicked = ColourButtonDo(g_window, g_textColours[i], selected, x, y, buttonWidth, 20);
+        if (clicked) selectedColourIdx = i;
+    }
 }
 
 // ****************************************************************************
 // ****************************************************************************
+
+void DrawCharFromEditableGlyphs(DfBitmap *bmp, int x, int y, unsigned char c) {
+    // The sequence of glyphs is:
+    // 0 to 95: ASCII 32 to 127 - ie space to tilde.
+    //   !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+    // 96 to 127: ASCII 161 to 191:
+    //  ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿
+    // 128 to 143: Half-height hex digits 0 to f.
+    // 144: Æ
+    // 145: Ğ
+    // 146: ×Ø
+    // 148: Şß
+    // 150: æ
+    // 151: ğ
+    // 152: ÷ø
+    // 153: ş
+
+    // 0123456789abcdef
+    // ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ
+    // ĞÑÒÓÔÕÖ×ØÙÚÛÜİŞß
+    // àáâãäåæçèéêëìíîï
+    // ğñòóôõö÷øùúûüışÿ
+
+    if (c < 32) {
+        // Unprintable
+    }
+    else if (c < 128) {
+        // Normal.
+        int glyphIdx = c - 32;
+        Blit(bmp, x, y, g_editWidget.glyphs[glyphIdx]);
+    }
+    else if (c < 161) {
+        // Unprintable
+    }
+    else if (c < 192) {
+        // Normal.
+        int glyphIdx = c - 65;
+    }
+}
+
+
+void DrawStringFromEditableGlyphs(DfBitmap *bmp, int x, int y, char *str, int numChars) {
+    for (int i = 0; i < numChars; i++) {
+        if (str[i] == '\0')
+            break;
+        DrawCharFromEditableGlyphs(bmp, x, y, str[i]);
+        x += g_editWidget.glyphs[0]->width;
+    }
+}
 
 
 static void draw_frame() {
@@ -166,7 +235,7 @@ static void draw_frame() {
         if (lineLen == 0)
             lineLen = columnWidth;
 
-        DrawTextSimpleLen(g_font, g_textColour, g_window->bmp, x, y, g_proofText + i, lineLen);
+        DrawStringFromEditableGlyphs(g_window->bmp, x, y, g_proofText + i, lineLen);
         y += g_font->charHeight;
         i += lineLen;
     }
