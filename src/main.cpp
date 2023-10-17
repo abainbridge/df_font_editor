@@ -6,6 +6,10 @@
 #include "df_window.h"
 #include "fonts/df_mono.h"
 
+// Standard headers
+#include <string.h>
+#include <stdio.h>
+
 
 struct EditWidget {
     int zoomFactor;
@@ -17,6 +21,9 @@ struct EditWidget {
     void Init(DfFont *font);
     void Advance();
     void Render();
+
+    void Load();
+    void Save();
 };
 
 
@@ -168,6 +175,68 @@ void EditWidget::Render() {
     }
 }
 
+
+void EditWidget::Load() {
+    FILE *f = fopen("font.dfbf", "rb");
+    unsigned char hdr[10];
+    fread(hdr, 1, 10, f);
+    ReleaseAssert(memcmp(hdr, "dfbf\1\1", 6) == 0, "Bad header");
+
+    fgetc(f); // width
+    fgetc(f); // height
+    fgetc(f); // flags
+
+    for (int i = 0; i < 95; i++) {
+        DfBitmap *g = g_editWidget.glyphs[i];
+
+        for (int y = 0; y < g->height; y++) {
+            for (int x = 0; x < g->width; x++) {
+                unsigned char b = fgetc(f);
+                ReleaseAssert(b < 4, "Bad colour in font");
+                PutPix(g, x, y, g_textColours[b]);
+            }
+        }
+    }
+    
+    fclose(f);
+}
+
+
+void EditWidget::Save() {
+    FILE *f = fopen("font.dfbf", "wb");
+
+    // Write top-level header.
+    fwrite("dfbf\1\1", 1, 6, f);
+    fwrite("\0\0\0\x0a", 1, 4, f);
+
+    // Write header for this font size.
+    fputc(g_editWidget.glyphs[0]->width, f);
+    fputc(g_editWidget.glyphs[0]->height, f);
+    fputc('\0', f); // flags = fixed-width.
+
+    for (int i = 0; i < 95; i++) {
+        DfBitmap *g = g_editWidget.glyphs[i];
+        for (int y = 0; y < g->height; y++) {
+            for (int x = 0; x < g->width; x++) {
+                DfColour c = GetPix(g, x, y);
+                if (c.c == g_textColours[0].c)
+                    fputc('\0', f);
+                else if (c.c == g_textColours[1].c)
+                    fputc('\x1', f);
+                else if (c.c == g_textColours[2].c)
+                    fputc('\x2', f);
+                else if (c.c == g_textColours[3].c)
+                    fputc('\x3', f);
+                else 
+                    ReleaseAssert(0, "Bad colour in bitmap");
+            }
+        }
+    }
+
+    fclose(f);
+}
+
+
 // ****************************************************************************
 // ****************************************************************************
 
@@ -242,6 +311,13 @@ static void draw_frame() {
 
     g_editWidget.Render();
 
+    if (g_window->input.keyDowns[KEY_S] && g_window->input.keys[KEY_CONTROL]) {
+        g_editWidget.Save();
+        DrawTextCentre(g_font, g_colourWhite, g_window->bmp,
+            g_window->bmp->width / 2, g_window->bmp->height - 20,
+            "File saved!!!");
+    }
+
     UpdateWin(g_window);
 }
 
@@ -255,6 +331,7 @@ void main() {
 
     g_font = LoadFontFromMemory(df_mono_11x20, sizeof(df_mono_11x20));
     g_editWidget.Init(g_font);
+    g_editWidget.Load();
 
 
     //
