@@ -134,6 +134,7 @@ void EditWidget::Advance() {
     if (g_window->input.keyDowns[KEY_4]) selectedColourIdx = 3;
 }
 
+
 void EditWidget::Render() {
     int fontWidth = glyphs[0]->width;
     int fontHeight = glyphs[0]->height;
@@ -152,14 +153,14 @@ void EditWidget::Render() {
     for (int i = 0; i <= 6 * fontHeight; i++) {
         int tmpY = top + i * zoomFactor;
         DfColour col = g_gridColour;
-        if ((i % g_font->charHeight) == 0)
+        if ((i % fontHeight) == 0)
             col = g_gridBoldColour;
         HLine(g_window->bmp, left, tmpY, width, col);
     }
     for (int i = 0; i <= 16 * fontWidth; i++) {
         int tmpX = left + i * zoomFactor;
         DfColour col = g_gridColour;
-        if ((i % g_font->maxCharWidth) == 0)
+        if ((i % fontWidth) == 0)
             col = g_gridBoldColour;
         VLine(g_window->bmp, tmpX, top + 1, height - 1, col);
     }
@@ -305,7 +306,7 @@ static void draw_frame() {
             lineLen = columnWidth;
 
         DrawStringFromEditableGlyphs(g_window->bmp, x, y, g_proofText + i, lineLen);
-        y += g_font->charHeight;
+        y += g_editWidget.glyphs[0]->height;
         i += lineLen;
     }
 
