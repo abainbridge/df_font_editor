@@ -31,6 +31,7 @@ static const char APPLICATION_NAME[] = "Deadfrog Font Editor";
 DfColour g_gridColour = { 0xff484848 };
 DfColour g_gridBoldColour = { 0xff707070 };
 DfColour g_textColours[4] = { 0xff303030, 0xff6e6e6e, 0xff8f8f8f, 0xffb8b8b8 };
+DfMenuBar g_menuBar;
 EditWidget g_editWidget;
 DfFont *g_font;
 char g_proofText[] =
@@ -93,7 +94,7 @@ int ColourButtonDo(DfWindow *win, DfColour colour, int selected, int x, int y, i
 
 void EditWidget::Init(DfFont *font) {
     zoomFactor = 7;
-    top = 10;
+    top = 13;
     left = 548;
     width = 16 * zoomFactor * font->maxCharWidth + 1;
     height = 6 * zoomFactor * font->charHeight;
@@ -109,6 +110,8 @@ void EditWidget::Init(DfFont *font) {
 }
 
 void EditWidget::Advance() {
+    top = g_menuBar.height + 3;
+
     int fontWidth = glyphs[0]->width;
     int fontHeight = glyphs[0]->height;
 
@@ -292,12 +295,14 @@ void DrawStringFromEditableGlyphs(DfBitmap *bmp, int x, int y, char *str, int nu
 
 
 static void draw_frame() {
+    DfGuiDoFrame(g_window);
+    
     BitmapClear(g_window->bmp, g_backgroundColour);
 
     // Draw proof text
     int columnWidth = 48;
     int x = 10;
-    int y = 10;
+    int y = g_menuBar.height + 3 * g_drawScale;
     for (int i = 0; i < sizeof(g_proofText);) {
         int lineLen = columnWidth;
         while (lineLen > 0 && g_proofText[i + lineLen - 1] != ' ')
@@ -312,13 +317,16 @@ static void draw_frame() {
 
     g_editWidget.Render();
 
-    if (g_window->input.keyDowns[KEY_S] && g_window->input.keys[KEY_CONTROL]) {
+    DfGuiAction action = DfMenuBarDo(g_window, &g_menuBar);
+    if (action.menuItemLabel == "Save") {
         g_editWidget.Save();
-        DrawTextCentre(g_font, g_colourWhite, g_window->bmp,
+        DrawTextCentre(g_defaultFont, g_colourWhite, g_window->bmp,
             g_window->bmp->width / 2, g_window->bmp->height - 20,
             "File saved!!!");
     }
 
+    DrawTextRight(g_defaultFont, g_normalTextColour, g_window->bmp,
+        g_window->bmp->width - 6 * g_drawScale, 8 * g_drawScale, "FPS: %d", g_window->fps);
     UpdateWin(g_window);
 }
 
@@ -331,15 +339,23 @@ void main() {
     UpdateWin(g_window);
 
     g_font = LoadFontFromMemory(df_mono_11x20, sizeof(df_mono_11x20));
+
     g_editWidget.Init(g_font);
     g_editWidget.Load();
+
+    DfMenuBarInit(&g_menuBar);
+    DfMenuBarAddAction(&g_menuBar, "File", "Open", { KEY_O, 1, 0, 0 });
+    DfMenuBarAddAction(&g_menuBar, "File", "Save", { KEY_S, 1, 0, 0 });
+    DfMenuBarAddAction(&g_menuBar, "File", "Exit", { KEY_F4, 0, 0, 1 });
+    DfMenuBarAddAction(&g_menuBar, "Edit", "Undo", { KEY_Z, 1, 0, 0 });
+    DfMenuBarAddAction(&g_menuBar, "Edit", "Redo", { KEY_Y, 1, 0, 0 });
 
 
     //
     // Main loop
 
     double next_force_frame_time = GetRealTime() + 0.2;
-    while (!g_window->windowClosed && !g_window->input.keyDowns[KEY_ESC]) {
+    while (!g_window->windowClosed) {
         bool force_frame = GetRealTime() > next_force_frame_time;
         if (force_frame) {
             next_force_frame_time = GetRealTime() + 0.2;
