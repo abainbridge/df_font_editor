@@ -294,7 +294,7 @@ void DrawStringFromEditableGlyphs(DfBitmap *bmp, int x, int y, char *str, int nu
 }
 
 
-static void draw_frame() {
+static void DrawFrame() {
     DfGuiDoFrame(g_window);
     
     BitmapClear(g_window->bmp, g_backgroundColour);
@@ -333,7 +333,7 @@ static void draw_frame() {
 
 void main() {
     g_window = CreateWin(1800, 1124, WT_WINDOWED_RESIZEABLE, APPLICATION_NAME);
-    RegisterRedrawCallback(g_window, draw_frame);
+    RegisterRedrawCallback(g_window, DrawFrame);
     SetWindowIcon(g_window);
     BitmapClear(g_window->bmp, g_backgroundColour);
     UpdateWin(g_window);
@@ -363,7 +363,7 @@ void main() {
 
         if (InputPoll(g_window) || force_frame) {
             g_editWidget.Advance();
-            draw_frame();
+            DrawFrame();
         }
          
         WaitVsync();
